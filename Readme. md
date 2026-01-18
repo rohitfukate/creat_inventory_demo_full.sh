@@ -1,0 +1,304 @@
+#!/bin/bash
+# create_inventory_demo_full.sh
+# Fully builds Inventory Management System project with code placeholders
+
+echo "Creating full Inventory Management System project..."
+
+# Create directories
+mkdir -p inventory-management-system/backend/inventory/migrations
+mkdir -p inventory-management-system/frontend/pages
+mkdir -p inventory-management-system/frontend/services
+mkdir -p inventory-management-system/frontend/styles
+
+# =======================
+# Backend files
+# =======================
+
+# manage.py
+cat <<EOL > inventory-management-system/backend/manage.py
+#!/usr/bin/env python
+import os
+import sys
+
+if __name__ == "__main__":
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(sys.argv)
+EOL
+
+# requirements.txt
+cat <<EOL > inventory-management-system/backend/requirements.txt
+django
+djangorestframework
+psycopg2-binary
+django-cors-headers
+djangorestframework-simplejwt
+gunicorn
+EOL
+
+# backend/settings.py
+cat <<EOL > inventory-management-system/backend/backend/settings.py
+# Django settings placeholder
+# Add your PostgreSQL credentials, JWT secret, and other configurations here
+EOL
+
+# backend/urls.py
+cat <<EOL > inventory-management-system/backend/backend/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from inventory.views import ProductViewSet
+from inventory.auth_views import RegisterView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+router = DefaultRouter()
+router.register('products', ProductViewSet)
+
+urlpatterns = [
+    path('api/', include(router.urls)),
+    path('api/auth/register/', RegisterView.as_view()),
+    path('api/auth/login/', TokenObtainPairView.as_view()),
+    path('api/auth/refresh/', TokenRefreshView.as_view()),
+]
+EOL
+
+# backend/wsgi.py
+echo "# WSGI placeholder" > inventory-management-system/backend/backend/wsgi.py
+
+# backend/asgi.py
+echo "# ASGI placeholder" > inventory-management-system/backend/backend/asgi.py
+
+# inventory/models.py
+cat <<EOL > inventory-management-system/backend/inventory/models.py
+from django.db import models
+from django.contrib.auth.models import User
+
+class Product(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+EOL
+
+# inventory/serializers.py
+cat <<EOL > inventory-management-system/backend/inventory/serializers.py
+from rest_framework import serializers
+from .models import Product
+
+class ProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = '__all__'
+EOL
+
+# inventory/views.py
+cat <<EOL > inventory-management-system/backend/inventory/views.py
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.filters import SearchFilter
+from .models import Product
+from .serializers import ProductSerializer
+
+class ProductViewSet(ModelViewSet):
+    serializer_class = ProductSerializer
+    filter_backends = [SearchFilter]
+    search_fields = ['name', 'description']
+
+    def get_queryset(self):
+        return Product.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+EOL
+
+# inventory/auth_serializers.py
+cat <<EOL > inventory-management-system/backend/inventory/auth_serializers.py
+from django.contrib.auth.models import User
+from rest_framework import serializers
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password']
+
+    def create(self, validated_data):
+        user = User.objects.create_user(**validated_data)
+        return user
+EOL
+
+# inventory/auth_views.py
+cat <<EOL > inventory-management-system/backend/inventory/auth_views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .auth_serializers import RegisterSerializer
+
+class RegisterView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"message": "User registered"}, status=status.HTTP_201_CREATED)
+EOL
+
+# migrations __init__.py
+touch inventory-management-system/backend/inventory/migrations/__init__.py
+
+# =======================
+# Frontend files
+# =======================
+
+# index.js
+cat <<EOL > inventory-management-system/frontend/pages/index.js
+import { useEffect, useState } from "react";
+import API from "../services/api";
+
+export default function Home() {
+  const [products, setProducts] = useState([]);
+  const [form, setForm] = useState({name:"", description:"", price:"", quantity:""});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [next, setNext] = useState(null);
+  const [prev, setPrev] = useState(null);
+
+  const load = async (page=1, search="") => {
+    const res = await API.get(\`products/?page=\${page}&search=\${search}\`);
+    setProducts(res.data.results);
+    setNext(res.data.next);
+    setPrev(res.data.previous);
+    setCurrentPage(page);
+  };
+
+  const create = async () => {
+    await API.post("products/", form);
+    setForm({name:"", description:"", price:"", quantity:""});
+    load();
+  };
+
+  const update = async (p) => { await API.put(\`products/\${p.id}/\`, {...p, quantity: p.quantity + 1}); load(); }
+  const remove = async (id) => { await API.delete(\`products/\${id}/\`); load(); }
+
+  useEffect(() => { load(); }, []);
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-6">
+      <h1 className="text-3xl font-bold mb-6">Inventory Manager</h1>
+      <div className="bg-white p-4 rounded shadow mb-6 flex flex-col gap-2 max-w-md">
+        <input placeholder="Name" className="border p-2 rounded" onChange={e => setForm({...form, name:e.target.value})}/>
+        <input placeholder="Description" className="border p-2 rounded" onChange={e => setForm({...form, description:e.target.value})}/>
+        <input placeholder="Price" className="border p-2 rounded" onChange={e => setForm({...form, price:e.target.value})}/>
+        <input placeholder="Quantity" className="border p-2 rounded" onChange={e => setForm({...form, quantity:e.target.value})}/>
+        <button className="bg-blue-500 text-white p-2 rounded" onClick={create}>Add Product</button>
+      </div>
+      <input placeholder="Search products" className="border p-2 rounded mb-4 max-w-md" onChange={e => load(1, e.target.value)} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {products.map(p=>(
+          <div key={p.id} className="bg-white p-4 rounded shadow flex justify-between items-center">
+            <div>
+              <h2 className="font-bold">{p.name}</h2>
+              <p>{p.description}</p>
+              <p className="text-gray-600">₹{p.price} | Qty: {p.quantity}</p>
+            </div>
+            <div className="flex gap-2">
+              <button className="bg-green-500 text-white p-2 rounded" onClick={()=>update(p)}>Update</button>
+              <button className="bg-red-500 text-white p-2 rounded" onClick={()=>remove(p.id)}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6 flex justify-center gap-4">
+        <button className="bg-gray-300 p-2 rounded" disabled={!prev} onClick={()=>load(currentPage-1)}>Previous</button>
+        <button className="bg-gray-300 p-2 rounded" disabled={!next} onClick={()=>load(currentPage+1)}>Next</button>
+      </div>
+    </div>
+  );
+}
+EOL
+
+# login.js
+cat <<EOL > inventory-management-system/frontend/pages/login.js
+import { useState } from "react";
+import API from "../services/api";
+
+export default function Login() {
+  const [data, setData] = useState({username:"", password:""});
+
+  const login = async () => {
+    const res = await API.post("auth/login/", data);
+    localStorage.setItem("token", res.data.access);
+    API.defaults.headers.common["Authorization"] = \`Bearer \${res.data.access}\`;
+  };
+
+  return (
+    <div className="p-6">
+      <input placeholder="Username" className="border p-2 rounded" onChange={e=>setData({...data, username:e.target.value})}/>
+      <input placeholder="Password" type="password" className="border p-2 rounded" onChange={e=>setData({...data, password:e.target.value})}/>
+      <button className="bg-blue-500 text-white p-2 rounded" onClick={login}>Login</button>
+    </div>
+  );
+}
+EOL
+
+# _app.js
+echo "import '../styles/globals.css'; export default function App({Component,pageProps}){return <Component {...pageProps} />}" > inventory-management-system/frontend/pages/_app.js
+
+# api.js
+cat <<EOL > inventory-management-system/frontend/services/api.js
+import axios from "axios";
+const API = axios.create({ baseURL: process.env.NEXT_PUBLIC_API_URL });
+API.interceptors.request.use(config => {
+  const token = localStorage.getItem("token");
+  if(token){ config.headers.Authorization = \`Bearer \${token}\`; }
+  return config;
+});
+export default API;
+EOL
+
+# globals.css
+cat <<EOL > inventory-management-system/frontend/styles/globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+EOL
+
+# package.json
+cat <<EOL > inventory-management-system/frontend/package.json
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "dependencies": { "axios": "^1.4.0", "next": "13.5.4", "react": "18.2.0", "react-dom": "18.2.0" },
+  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" }
+}
+EOL
+
+# tailwind.config.js
+echo "module.exports = { content:['./pages/**/*.{js,ts,jsx,tsx}','./components/**/*.{js,ts,jsx,tsx}'], theme:{extend:{}}, plugins:[] };" > inventory-management-system/frontend/tailwind.config.js
+
+# postcss.config.js
+echo "module.exports = { plugins:{ tailwindcss:{}, autoprefixer:{} } };" > inventory-management-system/frontend/postcss.config.js
+
+# Root README.md
+cat <<EOL > inventory-management-system/README.md
+# Inventory Management System
+Full-stack project with CRUD, JWT auth, search, pagination, and Tailwind UI.
+
+Live frontend and backend URLs go here.
+EOL
+
+# .gitignore
+cat <<EOL > inventory-management-system/.gitignore
+node_modules/
+*.env
+__pycache__/
+*.pyc
+EOL
+
+echo "Full project structure with code placeholders created!"
+echo "You can now zip it:"
+echo "zip -r inventory-management-system.zip inventory-management-system/"
